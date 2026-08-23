@@ -2,9 +2,11 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>ジェムクラッシュ</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { touch-action: manipulation; }
   body {
     margin: 0; padding: 16px;
     background: radial-gradient(ellipse at top, #1a1530 0%, #0a0812 70%);
@@ -13,9 +15,13 @@
     display: flex; flex-direction: column; align-items: center;
     min-height: 100vh;
   }
-  h1 { color: #f0d878; text-shadow: 2px 2px 0 #000; letter-spacing: 3px; font-size: 22px; margin: 4px 0 10px; }
+  h1 { color: #f0d878; text-shadow: 2px 2px 0 #000; letter-spacing: 3px; font-size: 22px; margin: 4px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  h1 button {
+    font-size: 13px; background: none; border: 1px solid #7a6838; border-radius: 6px;
+    color: #eae0c8; padding: 3px 9px; cursor: pointer;
+  }
   #statbar {
-    width: 100%; max-width: 360px;
+    width: min(94vw, 420px);
     background: linear-gradient(#2a2440, #1a1530);
     border: 3px solid #7a6838; border-radius: 8px;
     padding: 8px 14px; margin-bottom: 10px;
@@ -28,8 +34,8 @@
   .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.5); vertical-align: -2px; }
   #progbar { width: 100%; height: 10px; background: #100e1c; border: 1px solid #4a3f6e; border-radius: 5px; overflow: hidden; margin-top: 3px; flex-basis: 100%; }
   #progfill { height: 100%; background: linear-gradient(90deg,#f0d878,#e0a83f); width: 0%; transition: width .25s; }
-  #gamewrap { position: relative; }
-  canvas { background: #100e1c; border: 4px solid #7a6838; border-radius: 6px; display: block; touch-action: none; }
+  #gamewrap { position: relative; width: min(94vw, 420px); }
+  canvas { background: #100e1c; border: 4px solid #7a6838; border-radius: 6px; display: block; touch-action: none; width: 100%; height: auto; aspect-ratio: 1 / 1; }
   #toast {
     position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
     background: rgba(20,15,35,0.95); border: 2px solid #f0d878; border-radius: 8px;
@@ -72,15 +78,32 @@
     font-size: 14px; cursor: pointer;
   }
   #retryBtn:hover { background: #4a3f7e; }
-  #legend {
-    width: 100%; max-width: 360px; margin-top: 10px; font-size: 12px; line-height: 1.7;
-    background: #100e1c; border: 2px solid #4a3f6e; border-radius: 6px; padding: 8px 14px; color: #cfc6e0;
+  #helpOverlay {
+    position: fixed; inset: 0; background: rgba(6,4,14,0.92);
+    display: none; align-items: center; justify-content: center;
+    z-index: 50; padding: 20px;
+  }
+  #helpOverlay.show { display: flex; }
+  #helpBox {
+    width: min(94vw, 420px); max-height: 80vh; overflow-y: auto;
+    background: #100e1c; border: 2px solid #f0d878; border-radius: 10px;
+    padding: 18px; font-size: 13px; line-height: 1.8; color: #cfc6e0;
+  }
+  #helpBox h2 { color: #f0d878; font-size: 17px; margin: 0 0 10px; }
+  #helpCloseBtn {
+    display: block; margin: 14px auto 0;
+    background: linear-gradient(#3a3160,#241d3d); color: #f0e6c8;
+    border: 2px solid #8a7a4a; border-radius: 6px; padding: 8px 20px;
+    font-size: 14px; cursor: pointer;
   }
 </style>
 </head>
 <body>
 
-<h1>ジェムクラッシュ <button id="muteBtn" style="font-size:14px; vertical-align:2px; background:none; border:1px solid #7a6838; border-radius:6px; color:#eae0c8; padding:2px 8px; cursor:pointer;">🔊</button></h1>
+<h1>ジェムクラッシュ
+  <button id="helpBtn">❓ 遊び方</button>
+  <button id="muteBtn">🔊</button>
+</h1>
 
 <div id="statbar">
   <span>Lv <b id="lvVal">1</b></span>
@@ -104,10 +127,14 @@
   </div>
 </div>
 
-<div id="legend">
-  <b>遊び方</b>：隣り合う2つをスワイプ(またはタップ→タップ)して入れ替え、同じ色を3つ以上つなげます。<br>
-  縦横4個、または2×2の四角形につなげる→ライン消しアイテムに変化 / 5個→同色全消しアイテムに変化 / L字5個→周囲3×3消しアイテムに変化。特殊アイテムは隣に動かすと発動します。<br>
-  各ステージにはお題の色を指定個数消す「ミッション」があります(レベル5からは複数色を同時に集める必要あり)。手数が尽きる前に全て達成できないとゲームオーバーです。レベル5からは動かせない<b style="color:#aaa">お邪魔ブロック</b>が出現し、ライン消し・3×3消しでのみ壊せます。
+<div id="helpOverlay">
+  <div id="helpBox">
+    <h2>遊び方</h2>
+    隣り合う2つをスワイプ(またはタップ→タップ)して入れ替え、同じ色を3つ以上つなげます。<br><br>
+    縦横4個、または2×2の四角形につなげる→ライン消しアイテムに変化 / 5個→同色全消しアイテムに変化 / L字5個→周囲3×3消しアイテムに変化。特殊アイテムは隣に動かすと発動します。<br><br>
+    各ステージにはお題の色を指定個数消す「ミッション」があります(レベル5からは複数色を同時に集める必要あり)。手数が尽きる前に全て達成できないとゲームオーバーです。レベル5からは動かせない<b style="color:#aaa">お邪魔ブロック</b>が出現し、ライン消し・3×3消しでのみ壊せます。
+    <button id="helpCloseBtn">とじる</button>
+  </div>
 </div>
 
 <script>
@@ -294,6 +321,54 @@ function startLevel(lv, keepScore) {
 }
 
 // ---------- drawing ----------
+function shadeColor(hex, amt) {
+  const num = parseInt(hex.slice(1), 16);
+  let r = (num >> 16) + amt, g = ((num >> 8) & 0xff) + amt, b = (num & 0xff) + amt;
+  r = Math.min(255, Math.max(0, r)); g = Math.min(255, Math.max(0, g)); b = Math.min(255, Math.max(0, b));
+  return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
+}
+
+function gemPoints(cx, cy, r) {
+  const sides = 8, pts = [];
+  for (let i = 0; i < sides; i++) {
+    const angle = -Math.PI / 2 + i * (2 * Math.PI / sides);
+    pts.push({ x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) });
+  }
+  return pts;
+}
+
+function drawGem(cx, cy, r, color) {
+  const pts = gemPoints(cx, cy, r);
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+
+  for (let i = 0; i < pts.length; i++) {
+    const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+    ctx.beginPath();
+    ctx.moveTo(cx, cy); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.closePath();
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = i % 2 === 0 ? shadeColor(color, 24) : shadeColor(color, -22);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.strokeStyle = shadeColor(color, -45);
+  ctx.lineWidth = 1;
+  for (const p of pts) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(p.x, p.y); ctx.stroke(); }
+  ctx.beginPath();
+  pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+  ctx.closePath();
+  ctx.strokeStyle = shadeColor(color, -55); ctx.lineWidth = 1.5; ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx - r * 0.32, cy - r * 0.35, r * 0.26, r * 0.15, -0.5, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fill();
+}
+
 function drawTile(x, y, tile, highlighted, isSelected) {
   const cx = x + TILE/2, cy = y + TILE/2, r = TILE/2 - 4;
 
@@ -331,10 +406,7 @@ function drawTile(x, y, tile, highlighted, isSelected) {
     }
     drawStar(cx, cy, r*0.35, '#fff');
   } else {
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
-    ctx.fillStyle = color; ctx.fill();
-    ctx.beginPath(); ctx.arc(cx - r*0.3, cy - r*0.3, r*0.35, 0, Math.PI*2);
-    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
+    drawGem(cx, cy, r, color);
 
     if (tile.special === 'lineH') {
       ctx.fillStyle = '#fff';
@@ -817,6 +889,13 @@ function cellFromEvent(e) {
 function isAdjacent(a, b) {
   return (a.r === b.r && Math.abs(a.c - b.c) === 1) || (a.c === b.c && Math.abs(a.r - b.r) === 1);
 }
+
+document.getElementById('helpBtn').addEventListener('click', () => {
+  document.getElementById('helpOverlay').classList.add('show');
+});
+document.getElementById('helpCloseBtn').addEventListener('click', () => {
+  document.getElementById('helpOverlay').classList.remove('show');
+});
 
 canvas.addEventListener('pointerdown', (e) => {
   ensureAudio();
