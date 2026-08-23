@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ジェムクラッシュ</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; padding: 16px;
+    background: radial-gradient(ellipse at top, #1a1530 0%, #0a0812 70%);
+    color: #eae0c8;
+    font-family: 'Yu Gothic', 'Hiragino Sans', sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh;
+  }
+  h1 { color: #f0d878; text-shadow: 2px 2px 0 #000; letter-spacing: 3px; font-size: 22px; margin: 4px 0 10px; }
+  #statbar {
+    width: 100%; max-width: 360px;
+    background: linear-gradient(#2a2440, #1a1530);
+    border: 3px solid #7a6838; border-radius: 8px;
+    padding: 8px 14px; margin-bottom: 10px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;
+    font-size: 13px;
+  }
+  #statbar b { color: #f0d878; }
+  #progwrap { grid-column: 1 / 3; }
+  #missionList { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 3px; }
+  .swatch { display: inline-block; width: 13px; height: 13px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.5); vertical-align: -2px; }
+  #progbar { width: 100%; height: 10px; background: #100e1c; border: 1px solid #4a3f6e; border-radius: 5px; overflow: hidden; margin-top: 3px; flex-basis: 100%; }
+  #progfill { height: 100%; background: linear-gradient(90deg,#f0d878,#e0a83f); width: 0%; transition: width .25s; }
+  #gamewrap { position: relative; }
+  canvas { background: #100e1c; border: 4px solid #7a6838; border-radius: 6px; display: block; touch-action: none; }
+  #toast {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    background: rgba(20,15,35,0.95); border: 2px solid #f0d878; border-radius: 8px;
+    padding: 8px 18px; font-size: 14px; color: #f0d878; opacity: 0; transition: opacity .3s;
+    pointer-events: none; white-space: nowrap;
+  }
+  #toast.show { opacity: 1; }
+  #comboPopup {
+    position: absolute; top: 42%; left: 50%; transform: translate(-50%,-50%);
+    font-size: 26px; font-weight: bold; color: #ffce54; text-shadow: 2px 2px 0 #000;
+    opacity: 0; pointer-events: none; z-index: 5; white-space: nowrap;
+  }
+  @keyframes comboPop {
+    0% { transform: translate(-50%,-50%) scale(0.4) rotate(-4deg); opacity: 0; }
+    35% { transform: translate(-50%,-50%) scale(1.25) rotate(2deg); opacity: 1; }
+    70% { transform: translate(-50%,-50%) scale(1.0) rotate(0deg); opacity: 1; }
+    100% { transform: translate(-50%,-50%) scale(0.9) rotate(0deg); opacity: 0; }
+  }
+  #comboPopup.show { animation: comboPop 0.7s ease-out forwards; }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-5px) rotate(-0.5deg); }
+    40% { transform: translateX(5px) rotate(0.5deg); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+  #gamewrap.shake { animation: shake 0.28s ease-in-out; }
+  #gameOverOverlay {
+    position: absolute; inset: 0; background: rgba(6,4,14,0.94);
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 4px; z-index: 10; text-align: center; padding: 16px;
+  }
+  #gameOverOverlay.show { display: flex; }
+  #goTitle { font-size: 22px; color: #f0d878; font-weight: bold; margin-bottom: 12px; text-shadow: 2px 2px 0 #000; }
+  #goStats { font-size: 14px; line-height: 1.9; margin-bottom: 16px; color: #eae0c8; }
+  #goStats b { color: #f0d878; }
+  #retryBtn {
+    background: linear-gradient(#3a3160,#241d3d); color: #f0e6c8;
+    border: 2px solid #8a7a4a; border-radius: 6px; padding: 10px 20px;
+    font-size: 14px; cursor: pointer;
+  }
+  #retryBtn:hover { background: #4a3f7e; }
+  #legend {
+    width: 100%; max-width: 360px; margin-top: 10px; font-size: 12px; line-height: 1.7;
+    background: #100e1c; border: 2px solid #4a3f6e; border-radius: 6px; padding: 8px 14px; color: #cfc6e0;
+  }
+</style>
+</head>
+<body>
+
+<h1>ジェムクラッシュ <button id="muteBtn" style="font-size:14px; vertical-align:2px; background:none; border:1px solid #7a6838; border-radius:6px; color:#eae0c8; padding:2px 8px; cursor:pointer;">🔊</button></h1>
+
+<div id="statbar">
+  <span>Lv <b id="lvVal">1</b></span>
+  <span>手数 <b id="movesVal">26</b></span>
+  <span>累計スコア <b id="totalVal">0</b></span>
+  <span>コンボ x<b id="comboVal">1.0</b></span>
+  <div id="progwrap">
+    <div id="missionList"></div>
+    <div id="progbar"><div id="progfill"></div></div>
+  </div>
+</div>
+
+<div id="gamewrap">
+  <canvas id="game" width="352" height="352"></canvas>
+  <div id="toast"></div>
+  <div id="comboPopup"></div>
+  <div id="gameOverOverlay">
+    <div id="goTitle">💀 ゲームオーバー</div>
+    <div id="goStats"></div>
+    <button id="retryBtn">最初からもう一度</button>
+  </div>
+</div>
+
+<div id="legend">
+  <b>遊び方</b>：隣り合う2つをスワイプ(またはタップ→タップ)して入れ替え、同じ色を3つ以上つなげます。<br>
+  縦横4個、または2×2の四角形につなげる→ライン消しアイテムに変化 / 5個→同色全消しアイテムに変化 / L字5個→周囲3×3消しアイテムに変化。特殊アイテムは隣に動かすと発動します。<br>
+  各ステージにはお題の色を指定個数消す「ミッション」があります(レベル5からは複数色を同時に集める必要あり)。手数が尽きる前に全て達成できないとゲームオーバーです。レベル5からは動かせない<b style="color:#aaa">お邪魔ブロック</b>が出現し、ライン消し・3×3消しでのみ壊せます。
+</div>
+
+<script>
+const ROWS = 8, COLS = 8, TILE = 44;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+const COLORS = ['#e0473f', '#3f8fe0', '#3fbf6a', '#f0c33f', '#b060e0', '#f08a2f', '#3fd0c0'];
+
+let board = [];
+let level = 1, movesLeft = 26, totalScore = 0, colorCount = 4;
+let missions = [];
+const MAX_OBSTACLES = 8;
+let sessionBest = { level: 1, score: 0 };
+let inputLocked = false;
+let selected = null;
+let dragStart = null;
+let highlightSet = null;
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ---------- audio ----------
+let audioCtx = null, masterGain = null, muted = false;
+function ensureAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = muted ? 0 : 0.7;
+    masterGain.connect(audioCtx.destination);
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function toggleMute() {
+  muted = !muted;
+  if (masterGain) masterGain.gain.value = muted ? 0 : 0.7;
+  document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+}
+document.getElementById('muteBtn').addEventListener('click', () => {
+  ensureAudio();
+  toggleMute();
+});
+
+function playPoyo() {
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(480, t0);
+  osc.frequency.exponentialRampToValueAtTime(780, t0 + 0.05);
+  osc.frequency.exponentialRampToValueAtTime(360, t0 + 0.15);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(0.35, t0 + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+  osc.connect(gain); gain.connect(masterGain);
+  osc.start(t0); osc.stop(t0 + 0.2);
+}
+
+const NOTE_FREQ = { C5:523.25, D5:587.33, E5:659.25, F5:698.46, G5:783.99, A5:880.00, C4:261.63, G4:392.00 };
+const MELODY = ['C5','E5','G5','E5','D5','F5','A5','F5','C5','E5','G5','A5','G5','E5','D5','C5'];
+const NOTE_DUR = 0.22;
+let musicPlaying = false, musicTimer = null, nextNoteTime = 0, noteIndex = 0;
+
+function scheduleTone(freq, time, dur, type, vol) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, time);
+  gain.gain.exponentialRampToValueAtTime(vol, time + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, time + dur * 0.9);
+  osc.connect(gain); gain.connect(masterGain);
+  osc.start(time); osc.stop(time + dur);
+}
+
+function musicScheduler() {
+  while (nextNoteTime < audioCtx.currentTime + 0.15) {
+    const name = MELODY[noteIndex % MELODY.length];
+    scheduleTone(NOTE_FREQ[name], nextNoteTime, NOTE_DUR * 0.95, 'square', 0.09);
+    if (noteIndex % 4 === 0) {
+      scheduleTone(NOTE_FREQ[name] / 2, nextNoteTime, NOTE_DUR * 3.6, 'triangle', 0.05);
+    }
+    nextNoteTime += NOTE_DUR;
+    noteIndex++;
+  }
+  musicTimer = setTimeout(musicScheduler, 100);
+}
+
+function startMusic() {
+  if (musicPlaying) return;
+  musicPlaying = true;
+  nextNoteTime = audioCtx.currentTime + 0.05;
+  noteIndex = 0;
+  musicScheduler();
+}
+
+function baseMoves(lv) { return Math.max(16, 32 - Math.floor((lv - 1) / 3)); }
+function missionTargetFor(lv) { return 12 + Math.floor(lv * 0.8); }
+function colorsFor(lv) { return Math.min(4 + Math.floor((lv - 1) / 4), COLORS.length); }
+function missionColorCountFor(lv) {
+  if (lv < 5) return 1;
+  const n = 2 + Math.floor((lv - 5) / 8);
+  return Math.min(n, 3, colorsFor(lv));
+}
+function buildMissions(lv) {
+  const n = missionColorCountFor(lv);
+  const totalBudget = missionTargetFor(lv);
+  const pool = [...Array(colorCount).keys()];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const chosen = pool.slice(0, n);
+  const per = Math.max(6, Math.round(totalBudget / n));
+  return chosen.map(c => ({ color: c, target: per, progress: 0 }));
+}
+function obstaclesFor(lv) {
+  if (lv < 5) return 0;
+  const step = Math.floor((lv - 5) / 2) + 1;
+  return Math.min(MAX_OBSTACLES, step);
+}
+
+function randColor() { return Math.floor(Math.random() * colorCount); }
+
+function makeBoard() {
+  const b = [];
+  for (let r = 0; r < ROWS; r++) {
+    const row = [];
+    for (let c = 0; c < COLS; c++) {
+      let color;
+      do {
+        color = randColor();
+      } while (
+        (c >= 2 && row[c-1] && row[c-1].color === color && row[c-2] && row[c-2].color === color) ||
+        (r >= 2 && b[r-1][c].color === color && b[r-2][c].color === color)
+      );
+      row.push({ color, special: null });
+    }
+    b.push(row);
+  }
+  return b;
+}
+
+function placeObstacles(count) {
+  let placed = 0, attempts = 0;
+  while (placed < count && attempts < 300) {
+    attempts++;
+    const r = Math.floor(Math.random() * ROWS), c = Math.floor(Math.random() * COLS);
+    if (board[r][c] && !board[r][c].obstacle) {
+      board[r][c] = { obstacle: true };
+      placed++;
+    }
+  }
+}
+
+function randomizeNonObstacleColors() {
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    if (!(board[r][c] && board[r][c].obstacle)) board[r][c] = { color: randColor(), special: null };
+  }
+}
+
+function clearAccidentalMatches() {
+  for (let i = 0; i < 12; i++) {
+    const { runsH, runsV } = findRuns();
+    if (runsH.length === 0 && runsV.length === 0) break;
+    for (const run of [...runsH, ...runsV]) {
+      for (const cell of run.cells) board[cell.r][cell.c] = { color: randColor(), special: null };
+    }
+  }
+}
+
+function startLevel(lv, keepScore) {
+  level = lv;
+  colorCount = colorsFor(level);
+  movesLeft = baseMoves(level);
+  missions = buildMissions(level);
+  board = makeBoard();
+  placeObstacles(obstaclesFor(level));
+  clearAccidentalMatches();
+  ensurePlayable();
+  updateUI();
+  render();
+}
+
+// ---------- drawing ----------
+function drawTile(x, y, tile, highlighted, isSelected) {
+  const cx = x + TILE/2, cy = y + TILE/2, r = TILE/2 - 4;
+
+  if (highlighted) {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(x+1, y+1, TILE-2, TILE-2);
+  }
+
+  if (tile.obstacle) {
+    ctx.fillStyle = '#5a5850';
+    roundRect(x+4, y+4, TILE-8, TILE-8, 6); ctx.fill();
+    ctx.strokeStyle = '#8a887c'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x+10, y+14); ctx.lineTo(x+TILE-14, y+TILE-16);
+    ctx.moveTo(x+TILE-14, y+10); ctx.lineTo(x+16, y+TILE-12);
+    ctx.stroke();
+    return;
+  }
+
+  const color = COLORS[tile.color] || '#888';
+
+  if (tile.special === 'wrap') {
+    ctx.fillStyle = color;
+    roundRect(x+5, y+5, TILE-10, TILE-10, 8); ctx.fill();
+    drawStar(cx, cy, r*0.5, '#fff');
+  } else if (tile.special === 'colorBomb') {
+    const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, r);
+    grad.addColorStop(0, '#2a2440'); grad.addColorStop(1, '#000');
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fillStyle = grad; ctx.fill();
+    for (let i = 0; i < COLORS.length; i++) {
+      const ang = (i / COLORS.length) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(ang)*(r-4), cy + Math.sin(ang)*(r-4), 2.4, 0, Math.PI*2);
+      ctx.fillStyle = COLORS[i]; ctx.fill();
+    }
+    drawStar(cx, cy, r*0.35, '#fff');
+  } else {
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx - r*0.3, cy - r*0.3, r*0.35, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
+
+    if (tile.special === 'lineH') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(x+4, cy-3, TILE-8, 6);
+    } else if (tile.special === 'lineV') {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(cx-3, y+4, 6, TILE-8);
+    }
+  }
+
+  if (isSelected) {
+    ctx.strokeStyle = '#5ff0f0'; ctx.lineWidth = 3;
+    roundRect(x+2, y+2, TILE-4, TILE-4, 8); ctx.stroke();
+  }
+}
+
+function roundRect(x, y, w, h, rad) {
+  ctx.beginPath();
+  ctx.moveTo(x+rad, y);
+  ctx.arcTo(x+w, y, x+w, y+h, rad);
+  ctx.arcTo(x+w, y+h, x, y+h, rad);
+  ctx.arcTo(x, y+h, x, y, rad);
+  ctx.arcTo(x, y, x+w, y, rad);
+  ctx.closePath();
+}
+
+function drawStar(cx, cy, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    const a2 = a + Math.PI/4;
+    ctx.lineTo(cx + Math.cos(a2) * r * 0.4, cy + Math.sin(a2) * r * 0.4);
+  }
+  ctx.closePath(); ctx.fill();
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawBackground();
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = c * TILE, y = r * TILE;
+      const tile = board[r][c];
+      if (!tile) continue;
+      const key = r + ',' + c;
+      const isHl = highlightSet && highlightSet.has(key);
+      const isSel = selected && selected.r === r && selected.c === c;
+      drawTile(x, y, tile, isHl, isSel);
+    }
+  }
+}
+
+// ---------- match logic ----------
+function findRuns() {
+  const runsH = [], runsV = [];
+  for (let r = 0; r < ROWS; r++) {
+    let run = [];
+    for (let c = 0; c <= COLS; c++) {
+      const t = c < COLS ? board[r][c] : null;
+      if (t && !t.special && !t.obstacle && run.length && board[r][run[run.length-1]].color === t.color) {
+        run.push(c);
+      } else {
+        if (run.length >= 3) runsH.push({ dir:'h', color: board[r][run[0]].color, cells: run.map(cc => ({r, c:cc})) });
+        run = (t && !t.special && !t.obstacle) ? [c] : [];
+      }
+    }
+  }
+  for (let c = 0; c < COLS; c++) {
+    let run = [];
+    for (let r = 0; r <= ROWS; r++) {
+      const t = r < ROWS ? board[r][c] : null;
+      if (t && !t.special && !t.obstacle && run.length && board[run[run.length-1]][c].color === t.color) {
+        run.push(r);
+      } else {
+        if (run.length >= 3) runsV.push({ dir:'v', color: board[run[0]][c].color, cells: run.map(rr => ({r:rr, c})) });
+        run = (t && !t.special && !t.obstacle) ? [r] : [];
+      }
+    }
+  }
+  return { runsH, runsV };
+}
+
+function cellsShareOne(a, b) {
+  for (const ca of a) for (const cb of b) if (ca.r === cb.r && ca.c === cb.c) return { r: ca.r, c: ca.c };
+  return null;
+}
+
+function mostFrequentColor() {
+  const tally = new Array(COLORS.length).fill(0);
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const t = board[r][c];
+    if (t && !t.special && !t.obstacle) tally[t.color]++;
+  }
+  let best = 0;
+  for (let i = 1; i < tally.length; i++) if (tally[i] > tally[best]) best = i;
+  return best;
+}
+
+function effectArea(tile, contextColor, r, c) {
+  const cells = [];
+  if (tile.special === 'lineH') {
+    for (let cc = 0; cc < COLS; cc++) cells.push({ r, c: cc });
+  } else if (tile.special === 'lineV') {
+    for (let rr = 0; rr < ROWS; rr++) cells.push({ r: rr, c });
+  } else if (tile.special === 'wrap') {
+    for (let rr = r-1; rr <= r+1; rr++) for (let cc = c-1; cc <= c+1; cc++) {
+      if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) cells.push({ r: rr, c: cc });
+    }
+  } else if (tile.special === 'colorBomb') {
+    const target = contextColor !== null && contextColor !== undefined ? contextColor : mostFrequentColor();
+    for (let rr = 0; rr < ROWS; rr++) for (let cc = 0; cc < COLS; cc++) {
+      const t = board[rr][cc];
+      if (t && !t.special && !t.obstacle && t.color === target) cells.push({ r: rr, c: cc });
+    }
+  }
+  return cells;
+}
+
+function findSquares() {
+  const squares = [];
+  for (let r = 0; r < ROWS - 1; r++) {
+    for (let c = 0; c < COLS - 1; c++) {
+      const a = board[r][c], b = board[r][c+1], d = board[r+1][c], e = board[r+1][c+1];
+      if (a && b && d && e &&
+          !a.special && !b.special && !d.special && !e.special &&
+          !a.obstacle && !b.obstacle && !d.obstacle && !e.obstacle &&
+          a.color === b.color && a.color === d.color && a.color === e.color) {
+        squares.push({ color: a.color, cells: [{r,c},{r,c:c+1},{r:r+1,c},{r:r+1,c:c+1}] });
+      }
+    }
+  }
+  return squares;
+}
+
+function detectPass(directActivations, swapCells) {
+  const clearSet = new Map();
+  const specialsToPlace = [];
+  const activated = new Set();
+  let scoreGained = 0;
+
+  for (const da of (directActivations || [])) {
+    const key = da.r + ',' + da.c;
+    if (activated.has(key)) continue;
+    activated.add(key);
+    clearSet.set(key, true);
+    const area = effectArea(da.tile, da.contextColor, da.r, da.c);
+    scoreGained += area.length * 8;
+    for (const cell of area) clearSet.set(cell.r + ',' + cell.c, true);
+  }
+
+  const { runsH, runsV } = findRuns();
+  const consumedH = new Set(), consumedV = new Set();
+
+  for (let i = 0; i < runsH.length; i++) {
+    if (consumedH.has(i)) continue;
+    for (let j = 0; j < runsV.length; j++) {
+      if (consumedV.has(j)) continue;
+      const shared = cellsShareOne(runsH[i].cells, runsV[j].cells);
+      if (shared) {
+        consumedH.add(i); consumedV.add(j);
+        for (const cell of runsH[i].cells) clearSet.set(cell.r + ',' + cell.c, true);
+        for (const cell of runsV[j].cells) clearSet.set(cell.r + ',' + cell.c, true);
+        specialsToPlace.push({ r: shared.r, c: shared.c, type: 'wrap', color: runsH[i].color });
+        scoreGained += 150;
+        break;
+      }
+    }
+  }
+
+  function pickAtCells(cells) {
+    if (swapCells) {
+      for (const [sr, sc] of swapCells) {
+        for (const cell of cells) if (cell.r === sr && cell.c === sc) return { r: sr, c: sc };
+      }
+    }
+    const mid = cells[Math.floor(cells.length / 2)];
+    return { r: mid.r, c: mid.c };
+  }
+  function pickAt(run) { return pickAtCells(run.cells); }
+
+  runsH.forEach((run, i) => {
+    if (consumedH.has(i)) return;
+    for (const cell of run.cells) clearSet.set(cell.r + ',' + cell.c, true);
+    if (run.cells.length === 3) scoreGained += 30;
+    else if (run.cells.length === 4) {
+      scoreGained += 60;
+      const at = pickAt(run);
+      specialsToPlace.push({ r: at.r, c: at.c, type: 'lineH', color: run.color });
+    } else if (run.cells.length >= 5) {
+      scoreGained += 120;
+      const at = pickAt(run);
+      specialsToPlace.push({ r: at.r, c: at.c, type: 'colorBomb', color: run.color });
+    }
+  });
+  runsV.forEach((run, i) => {
+    if (consumedV.has(i)) return;
+    for (const cell of run.cells) clearSet.set(cell.r + ',' + cell.c, true);
+    if (run.cells.length === 3) scoreGained += 30;
+    else if (run.cells.length === 4) {
+      scoreGained += 60;
+      const at = pickAt(run);
+      specialsToPlace.push({ r: at.r, c: at.c, type: 'lineV', color: run.color });
+    } else if (run.cells.length >= 5) {
+      scoreGained += 120;
+      const at = pickAt(run);
+      specialsToPlace.push({ r: at.r, c: at.c, type: 'colorBomb', color: run.color });
+    }
+  });
+
+  const squares = findSquares();
+  for (const sq of squares) {
+    const keys = sq.cells.map(cell => cell.r + ',' + cell.c);
+    if (keys.some(k => clearSet.has(k))) continue;
+    for (const k of keys) clearSet.set(k, true);
+    scoreGained += 60;
+    const at = pickAtCells(sq.cells);
+    const type = Math.random() < 0.5 ? 'lineH' : 'lineV';
+    specialsToPlace.push({ r: at.r, c: at.c, type, color: sq.color });
+  }
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const key of [...clearSet.keys()]) {
+      if (activated.has(key)) continue;
+      const [r, c] = key.split(',').map(Number);
+      const tile = board[r][c];
+      if (tile && tile.special) {
+        activated.add(key);
+        changed = true;
+        const area = effectArea(tile, null, r, c);
+        scoreGained += area.length * 8;
+        for (const cell of area) clearSet.set(cell.r + ',' + cell.c, true);
+      }
+    }
+  }
+
+  if (clearSet.size === 0 && specialsToPlace.length === 0) return null;
+  return { clearSet, specialsToPlace, scoreGained };
+}
+
+function applyPass({ clearSet, specialsToPlace }) {
+  const specialKeys = new Set(specialsToPlace.map(s => s.r + ',' + s.c));
+  for (const key of clearSet.keys()) {
+    if (specialKeys.has(key)) continue;
+    const [r, c] = key.split(',').map(Number);
+    board[r][c] = null;
+  }
+  for (const s of specialsToPlace) board[s.r][s.c] = { color: s.color, special: s.type };
+}
+
+function applyGravityWithDrops() {
+  const drops = [];
+  for (let c = 0; c < COLS; c++) {
+    const obstacleRows = [];
+    for (let r = 0; r < ROWS; r++) if (board[r][c] && board[r][c].obstacle) obstacleRows.push(r);
+    const bounds = [];
+    let prev = 0;
+    for (const or_ of obstacleRows) { bounds.push([prev, or_ - 1]); prev = or_ + 1; }
+    bounds.push([prev, ROWS - 1]);
+
+    for (const [top, bottom] of bounds) {
+      if (top > bottom) continue;
+      const existing = [];
+      for (let r = top; r <= bottom; r++) if (board[r][c] && !board[r][c].obstacle) existing.push({ r, tile: board[r][c] });
+      let write = bottom;
+      for (let i = existing.length - 1; i >= 0; i--) {
+        board[write][c] = existing[i].tile;
+        drops.push({ c, fromR: existing[i].r, toR: write, tile: existing[i].tile });
+        write--;
+      }
+      let spawnIndex = 0;
+      for (let r = write; r >= top; r--) {
+        const t = { color: randColor(), special: null };
+        board[r][c] = t;
+        drops.push({ c, fromR: top - 1 - spawnIndex, toR: r, tile: t });
+        spawnIndex++;
+      }
+    }
+  }
+  return drops;
+}
+
+function easeOutBounce(x) {
+  const n1 = 7.5625, d1 = 2.75;
+  if (x < 1 / d1) return n1 * x * x;
+  else if (x < 2 / d1) return n1 * (x -= 1.5 / d1) * x + 0.75;
+  else if (x < 2.5 / d1) return n1 * (x -= 2.25 / d1) * x + 0.9375;
+  else return n1 * (x -= 2.625 / d1) * x + 0.984375;
+}
+
+function drawBackground() {
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    ctx.fillStyle = (r + c) % 2 === 0 ? '#1c1830' : '#181428';
+    ctx.fillRect(c * TILE, r * TILE, TILE, TILE);
+  }
+}
+
+function animateDrops(drops, duration) {
+  return new Promise(resolve => {
+    const start = performance.now();
+    function frame(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = easeOutBounce(t);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground();
+      for (const d of drops) {
+        const rowPos = d.fromR + (d.toR - d.fromR) * eased;
+        drawTile(d.c * TILE, rowPos * TILE, d.tile, false, false);
+      }
+      if (t < 1) requestAnimationFrame(frame);
+      else { render(); resolve(); }
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+function triggerCombo(mult, cellsCleared) {
+  if (mult > 1.05) {
+    const el = document.getElementById('comboPopup');
+    el.textContent = `コンボ x${mult.toFixed(1)}!`;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+  }
+  if (cellsCleared >= 8) {
+    const wrap = document.getElementById('gamewrap');
+    wrap.classList.remove('shake');
+    void wrap.offsetWidth;
+    wrap.classList.add('shake');
+  }
+}
+
+function testSwapCreatesMatch(r1, c1, r2, c2) {
+  if (board[r1][c1].obstacle || board[r2][c2].obstacle) return false;
+  const a = board[r1][c1], b = board[r2][c2];
+  board[r1][c1] = b; board[r2][c2] = a;
+  const { runsH, runsV } = findRuns();
+  board[r1][c1] = a; board[r2][c2] = b;
+  return runsH.length > 0 || runsV.length > 0;
+}
+
+function ensurePlayable() {
+  for (let tries = 0; tries < 40; tries++) {
+    let found = false;
+    for (let r = 0; r < ROWS && !found; r++) {
+      for (let c = 0; c < COLS && !found; c++) {
+        if (c < COLS - 1 && testSwapCreatesMatch(r, c, r, c+1)) found = true;
+        else if (r < ROWS - 1 && testSwapCreatesMatch(r, c, r+1, c)) found = true;
+      }
+    }
+    if (found) return;
+    randomizeNonObstacleColors();
+    clearAccidentalMatches();
+  }
+}
+
+// ---------- game flow ----------
+function updateUI() {
+  document.getElementById('lvVal').textContent = level;
+  document.getElementById('movesVal').textContent = movesLeft;
+  document.getElementById('totalVal').textContent = totalScore;
+  document.getElementById('missionList').innerHTML = missions.map(m =>
+    `<span style="display:inline-flex;align-items:center;gap:4px;">
+       <span class="swatch" style="background:${COLORS[m.color]}"></span>${Math.min(m.progress, m.target)} / ${m.target}
+     </span>`
+  ).join('');
+  const avgPct = missions.reduce((s, m) => s + Math.min(1, m.progress / m.target), 0) / missions.length;
+  document.getElementById('progfill').style.width = (avgPct * 100) + '%';
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 1300);
+}
+
+function triggerGameOver() {
+  inputLocked = true;
+  if (level > sessionBest.level || (level === sessionBest.level && totalScore > sessionBest.score)) {
+    sessionBest = { level, score: totalScore };
+  }
+  document.getElementById('goStats').innerHTML =
+    `到達レベル：<b>Lv${level}</b><br>累計スコア：<b>${totalScore}</b><br><br>自己ベスト：Lv${sessionBest.level} / ${sessionBest.score}点`;
+  document.getElementById('gameOverOverlay').classList.add('show');
+}
+document.getElementById('retryBtn').onclick = () => {
+  document.getElementById('gameOverOverlay').classList.remove('show');
+  totalScore = 0;
+  inputLocked = false;
+  startLevel(1, false);
+};
+
+async function resolveCascade(firstResult) {
+  let result = firstResult;
+  let comboMult = 1;
+  document.getElementById('comboVal').textContent = '1.0';
+  while (result) {
+    highlightSet = result.clearSet; render();
+    await sleep(160);
+    for (const key of result.clearSet.keys()) {
+      const [r, c] = key.split(',').map(Number);
+      const t = board[r][c];
+      if (t && !t.obstacle) {
+        const m = missions.find(mm => mm.color === t.color);
+        if (m) m.progress++;
+      }
+    }
+    applyPass(result);
+    highlightSet = null; render();
+    await sleep(70);
+    const drops = applyGravityWithDrops();
+    await animateDrops(drops, 380);
+    const gained = Math.round(result.scoreGained * comboMult);
+    totalScore += gained;
+    updateUI();
+    triggerCombo(comboMult, result.clearSet.size);
+    comboMult += 0.4;
+    document.getElementById('comboVal').textContent = comboMult.toFixed(1);
+    result = detectPass(null, null);
+  }
+  ensurePlayable();
+  render();
+}
+
+async function attemptSwap(r1, c1, r2, c2) {
+  if (inputLocked) return;
+  if (board[r1][c1].obstacle || board[r2][c2].obstacle) return;
+  inputLocked = true;
+  selected = null;
+
+  const t1 = board[r1][c1], t2 = board[r2][c2];
+  board[r1][c1] = t2; board[r2][c2] = t1;
+  playPoyo();
+  render();
+
+  const directActivations = [];
+  if (t1.special) directActivations.push({ r: r1, c: c1, tile: t1, contextColor: t2.special ? null : t2.color });
+  if (t2.special) directActivations.push({ r: r2, c: c2, tile: t2, contextColor: t1.special ? null : t1.color });
+
+  let result;
+  if (directActivations.length > 0) {
+    result = detectPass(directActivations, [[r1,c1],[r2,c2]]);
+  } else {
+    result = detectPass(null, [[r1,c1],[r2,c2]]);
+  }
+
+  if (!result) {
+    await sleep(180);
+    board[r1][c1] = t1; board[r2][c2] = t2;
+    render();
+    inputLocked = false;
+    return;
+  }
+
+  movesLeft--; updateUI();
+  await resolveCascade(result);
+  inputLocked = false;
+
+  if (missions.every(m => m.progress >= m.target)) {
+    showToast(`ステージ ${level} クリア！`);
+    await sleep(300);
+    startLevel(level + 1, false);
+  } else if (movesLeft <= 0) {
+    triggerGameOver();
+  }
+}
+
+// ---------- input ----------
+function cellFromEvent(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+  const c = Math.floor(x / TILE), r = Math.floor(y / TILE);
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return null;
+  return { r, c };
+}
+function isAdjacent(a, b) {
+  return (a.r === b.r && Math.abs(a.c - b.c) === 1) || (a.c === b.c && Math.abs(a.r - b.r) === 1);
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  ensureAudio();
+  if (!musicPlaying) startMusic();
+  if (inputLocked) return;
+  const cell = cellFromEvent(e);
+  if (!cell) return;
+  if (board[cell.r][cell.c].obstacle) { selected = null; render(); return; }
+  dragStart = { r: cell.r, c: cell.c, x: e.clientX, y: e.clientY, fired: false };
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!dragStart || dragStart.fired || inputLocked) return;
+  const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+  if (Math.hypot(dx, dy) < 18) return;
+  let tr = dragStart.r, tc = dragStart.c;
+  if (Math.abs(dx) > Math.abs(dy)) tc += dx > 0 ? 1 : -1;
+  else tr += dy > 0 ? 1 : -1;
+  if (tr >= 0 && tr < ROWS && tc >= 0 && tc < COLS) {
+    dragStart.fired = true;
+    attemptSwap(dragStart.r, dragStart.c, tr, tc);
+  }
+});
+canvas.addEventListener('pointerup', (e) => {
+  if (!dragStart) return;
+  if (!dragStart.fired) {
+    const cell = { r: dragStart.r, c: dragStart.c };
+    if (!selected) {
+      selected = cell; render();
+    } else if (selected.r === cell.r && selected.c === cell.c) {
+      selected = null; render();
+    } else if (isAdjacent(selected, cell)) {
+      const s = selected;
+      attemptSwap(s.r, s.c, cell.r, cell.c);
+    } else {
+      selected = cell; render();
+    }
+  }
+  dragStart = null;
+});
+canvas.addEventListener('pointerleave', () => { dragStart = null; });
+
+// ---------- init ----------
+startLevel(1, false);
+</script>
+</body>
+</html>
